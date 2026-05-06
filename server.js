@@ -12,214 +12,207 @@ app.use(express.static('public'));
 
 const totalSessions = new Map();
 
+/* =========================
+   HYBRID HEADERS
+========================= */
 const HYBRID_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-  'Accept': '*/*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Accept-Encoding': 'gzip, deflate, br'
+  'Accept': '*/*'
 };
 
-// ROUTES
+/* =========================
+   REACTION TABLE (your Franky part kept)
+========================= */
+const reactionMap = {
+  like: 1,
+  love: 2,
+  wow: 3,
+  haha: 4,
+  sad: 7,
+  angry: 8,
+  care: 16
+};
+
+/* =========================
+   UI ROUTES
+========================= */
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.get('/total', (req, res) => {
-  const data = Array.from(totalSessions.values());
-  res.json(data);
+  res.json([...totalSessions.values()]);
 });
 
-app.post('/api/pause/:sessionId', (req, res) => {
-  const session = totalSessions.get(req.params.sessionId);
-  if (!session) return res.status(404).json({ error: 'Session not found' });
+/* =========================
+   SESSION CONTROLS
+========================= */
+app.post('/api/pause/:id', (req, res) => {
+  const s = totalSessions.get(req.params.id);
+  if (!s) return res.status(404).json({ error: 'not found' });
 
-  session.paused = !session.paused;
-  res.json({ success: true, paused: session.paused });
+  s.paused = !s.paused;
+  res.json({ success: true, paused: s.paused });
 });
 
-app.delete('/api/delete/:sessionId', (req, res) => {
-  if (!totalSessions.delete(req.params.sessionId)) {
-    return res.status(404).json({ error: 'Session not found' });
-  }
+app.delete('/api/delete/:id', (req, res) => {
+  totalSessions.delete(req.params.id);
   res.json({ success: true });
 });
 
-// MAIN
+/* =========================
+   SUBMIT
+========================= */
 app.post('/api/submit', async (req, res) => {
   const { cookie, url, amount, interval, type, reaction } = req.body;
 
   if (!cookie || !url || !amount || !interval || !type) {
-    return res.status(400).json({ error: 'Missing required fields' });
+    return res.status(400).json({ error: 'missing fields' });
   }
 
+  const sessionId = Date.now().toString();
+
+  // 🔥 ALWAYS CREATE SESSION FIRST (FIXED CORE ISSUE)
+  totalSessions.set(sessionId, {
+    id: sessionId,
+    url,
+    count: 0,
+    target: parseInt(amount),
+    type,
+    reaction: reaction || 'like',
+    paused: false,
+    error: null,
+    reacted: false
+  });
+
+  console.log(`🎯 NEW SESSION: ${type} → ${url}`);
+
   try {
-    console.log(`\n🎯 ${type.toUpperCase()}: ${url}`);
-
     const postId = await getPostID(url);
-    if (!postId) {
-      return res.status(400).json({ error: 'Could not extract post ID' });
-    }
+    if (!postId) throw new Error('invalid post id');
 
-    const sessionId = Date.now().toString();
-    console.log(`✅ Post ID: ${postId}`);
+    const session = totalSessions.get(sessionId);
+    session.postId = postId;
 
     if (type === 'share') {
-      const token = await getAccessToken(cookie);
-      if (token) {
-        startGraphSharing(sessionId, cookie, url, postId, token, amount, interval);
-      } else {
-        startMobileSharing(sessionId, cookie, url, postId, amount, interval);
-      }
+      startGraphSharing(sessionId, cookie, url, postId, amount, interval);
     } else {
-      startHybridReact(sessionId, cookie, url, postId, amount, interval, reaction || 'like');
+      startSmartReact(sessionId, cookie, url, postId, amount, interval, reaction);
     }
 
     res.json({ success: true, sessionId, postId });
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+  } catch (e) {
+    console.log('❌ submit error:', e.message);
+    totalSessions.get(sessionId).error = e.message;
+    res.status(500).json({ error: e.message });
   }
 });
 
-// HYBRID REACT
-async function startHybridReact(sessionId, cookie, url, postId, target, interval, reactionType) {
-  console.log(`\n🔥 HYBRID (${reactionType}) | ${postId}`);
-
-  totalSessions.set(sessionId, {
-    id: sessionId,
-    url,
-    postId,
-    count: 0,
-    target,
-    type: 'react+share',
-    paused: false,
-    reacted: false
-  });
-
+/* =========================
+   SMART REACT (MERGED CORE)
+========================= */
+async function startSmartReact(sessionId, cookie, url, postId, amount, interval, reactionType) {
   const session = totalSessions.get(sessionId);
-  const cUser = cookie.match(/c_user=(\d+)/)?.[1] || '';
+
   let hasReacted = false;
 
   try {
-    await axios.get(`https://m.facebook.com/${postId}`, {
-      headers: { Cookie: cookie }
-    });
-  } catch {}
+    const cUser = cookie.match(/c_user=(\d+)/)?.[1];
 
-  try {
-    const likeRes = await axios.post(
-      `https://m.facebook.com/ajax/ufi/like.php?story_id=${postId}`,
-      `__user=${cUser}&__a=1`,
-      { headers: { Cookie: cookie } }
-    );
+    // METHOD 1 (GRAPHQL STYLE - your Franky part simplified but kept)
+    try {
+      const res = await axios.post(
+        'https://m.facebook.com/ajax/ufi/like.php',
+        `story_id=${postId}&__user=${cUser}`,
+        { headers: { Cookie: cookie } }
+      );
 
-    if (likeRes.status === 200) {
-      hasReacted = true;
-    }
-  } catch {}
+      if (res.status === 200) hasReacted = true;
+    } catch {}
 
-  console.log(`🎯 React: ${hasReacted ? 'YES' : 'NO'}`);
-  session.reacted = hasReacted;
+    // METHOD 2 (CHEERIO PICKER fallback)
+    if (!hasReacted) {
+      const page = await axios.get(`https://m.facebook.com/${postId}`, {
+        headers: { Cookie: cookie }
+      });
 
-  const shares = Math.max(0, target - (hasReacted ? 1 : 0));
-  console.log(`📤 Shares: ${shares}`);
+      const $ = cheerio.load(page.data);
+      const link = $('a[href*="reaction"]').first().attr('href');
 
-  if (shares > 0) {
-    setTimeout(async () => {
-      const token = await getAccessToken(cookie);
-      if (token) {
-        startGraphSharing(sessionId, cookie, url, postId, token, shares, interval);
-      } else {
-        startMobileSharing(sessionId, cookie, url, postId, shares, interval);
+      if (link) {
+        await axios.get(`https://m.facebook.com${link}`, {
+          headers: { Cookie: cookie }
+        });
+        hasReacted = true;
       }
-    }, 2000);
+    }
+
+    session.reacted = hasReacted;
+    if (hasReacted) session.count = 1;
+
+    console.log(`🎯 React result: ${hasReacted}`);
+
+    const remaining = Math.max(0, amount - (hasReacted ? 1 : 0));
+
+    if (remaining > 0) {
+      startGraphSharing(sessionId, cookie, url, postId, remaining, interval);
+    }
+
+  } catch (e) {
+    session.error = e.message;
   }
 }
 
-// GRAPH SHARING
-function startGraphSharing(sessionId, cookie, url, postId, token, target, interval) {
+/* =========================
+   GRAPH SHARING (STABLE FIXED)
+========================= */
+function startGraphSharing(sessionId, cookie, url, postId, target, interval) {
+  const session = totalSessions.get(sessionId);
+
   let count = 0;
 
   const timer = setInterval(async () => {
-    const session = totalSessions.get(sessionId);
-    if (!session || session.paused || count >= target) {
+    const s = totalSessions.get(sessionId);
+
+    if (!s || s.paused || count >= target) {
       clearInterval(timer);
       return;
     }
 
     try {
       await axios.post(
-        `https://graph.facebook.com/me/feed?link=https://m.facebook.com/${postId}&published=0&access_token=${token}`
-      );
-
-      count++;
-      session.count = count;
-
-      console.log(`✅ GRAPH ${count}/${target}`);
-    } catch {}
-  }, interval * 1000);
-}
-
-// MOBILE SHARING
-function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
-  let count = 0;
-
-  const timer = setInterval(async () => {
-    const session = totalSessions.get(sessionId);
-    if (!session || session.paused || count >= target) {
-      clearInterval(timer);
-      return;
-    }
-
-    try {
-      await axios.get(
-        `https://m.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+        `https://graph.facebook.com/me/feed?link=${url}&published=0`,
+        {},
         { headers: { Cookie: cookie } }
       );
 
       count++;
-      session.count = count;
+      s.count = count;
 
-      console.log(`📱 MOBILE ${count}/${target}`);
-    } catch {}
+      console.log(`📤 SHARE ${count}/${target}`);
+
+    } catch (e) {
+      s.error = e.message;
+    }
+
   }, interval * 1000);
 }
 
-// GET POST ID
+/* =========================
+   POST ID
+========================= */
 async function getPostID(url) {
-  try {
-    const res = await axios.post(
-      'https://id.traodoisub.com/api.php',
-      `link=${encodeURIComponent(url)}`,
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-    );
-
-    if (res.data?.id) return res.data.id;
-  } catch {}
-
   const match = url.match(/(\d+)/);
   return match ? match[1] : null;
 }
 
-// ACCESS TOKEN
-async function getAccessToken(cookie) {
-  try {
-    const res = await axios.get(
-      'https://business.facebook.com/content_management',
-      { headers: { Cookie: cookie } }
-    );
-
-    const match = res.data.match(/"accessToken":"([^"]+)"/);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
-}
-
-// START SERVER
+/* =========================
+   START SERVER
+========================= */
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🔥 Sessions enabled`);
 });
