@@ -11,7 +11,6 @@ app.use(express.static('public'));
 
 const totalSessions = new Map();
 
-// 🔥 HYBRID HEADERS (WORKING SHARE + REACT)
 const HYBRID_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': '*/*',
@@ -19,7 +18,6 @@ const HYBRID_HEADERS = {
     'Accept-Encoding': 'gzip, deflate, br'
 };
 
-// 🔥 ALL UI ROUTES (YOUR ORIGINAL)
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -59,7 +57,6 @@ app.delete('/api/delete/:sessionId', (req, res) => {
     }
 });
 
-// 🚀 MAIN SUBMIT (YOUR STRUCTURE)
 app.post('/api/submit', async (req, res) => {
     const { cookie, url, amount, interval, type, reaction } = req.body;
 
@@ -79,7 +76,6 @@ app.post('/api/submit', async (req, res) => {
         console.log(`✅ Post ID: ${postId}`);  
 
         if (type === 'share') {  
-            // WORKING SHARE CODE (100% success)  
             const accessToken = await getAccessToken(cookie);  
             if (accessToken) {  
                 startGraphSharing(sessionId, cookie, url, postId, accessToken, parseInt(amount), parseInt(interval));  
@@ -87,7 +83,6 @@ app.post('/api/submit', async (req, res) => {
                 startMobileSharing(sessionId, cookie, url, postId, parseInt(amount), parseInt(interval));  
             }  
         } else {  
-            // HYBRID REACT + SHARE  
             startHybridReact(sessionId, cookie, url, postId, parseInt(amount), parseInt(interval), reaction || 'like');  
         }  
 
@@ -99,7 +94,6 @@ app.post('/api/submit', async (req, res) => {
     }
 });
 
-// 🔥 HYBRID REACT (90% SUCCESS + 100% SHARES)
 async function startHybridReact(sessionId, cookie, url, postId, target, interval, reactionType) {
     console.log(`🔥 HYBRID REACT+SHARE (${reactionType}) | ${postId}`);
 
@@ -113,7 +107,6 @@ async function startHybridReact(sessionId, cookie, url, postId, target, interval
     const cUser = cookie.match(/c_user=(\d+)/)?.[1] || '';
     let hasReacted = false;
 
-    // 🟢 PHASE 1: SIMPLE TOUCH (reduces blocks)
     try {
         console.log('📱 Touching post...');
         await axios.get(`https://m.facebook.com/${postId}`, {
@@ -128,7 +121,6 @@ async function startHybridReact(sessionId, cookie, url, postId, target, interval
         console.log('⚠️ Touch skipped');
     }
 
-    // 🟢 PHASE 2: MOBILE LIKE (85% success - simple)
     try {
         console.log('👍 Simple mobile LIKE...');
         const likeRes = await axios.post(
@@ -154,12 +146,10 @@ async function startHybridReact(sessionId, cookie, url, postId, target, interval
             hasReacted = true;  
             console.log('✅ MOBILE LIKE SUCCESS! 🎉');  
         }
-
     } catch (e) {
         console.log('❌ Mobile like failed');
     }
 
-    // 🟢 PHASE 3: REACTION PICKER (backup)
     if (!hasReacted) {
         try {
             console.log('🎨 Reaction picker...');
@@ -199,12 +189,10 @@ async function startHybridReact(sessionId, cookie, url, postId, target, interval
         }
     }
 
-    // 🎯 RESULT
     console.log(`🎯 React: ${hasReacted ? '✅ YES' : '❌ NO'}`);
     session.reacted = hasReacted;
     if (hasReacted) session.count = 1;
 
-    // 🚀 SHARES (YOUR WORKING CODE)
     const shares = Math.max(0, target - (hasReacted ? 1 : 0));
     console.log(`📤 Shares: ${shares}`);
 
@@ -218,7 +206,6 @@ async function startHybridReact(sessionId, cookie, url, postId, target, interval
     }
 }
 
-// 🔥 GRAPH SHARING (YOUR WORKING VERSION - 100%)
 function startGraphSharing(sessionId, cookie, url, postId, accessToken, target, interval) {
     if (!totalSessions.has(sessionId)) {
         totalSessions.set(sessionId, {
@@ -261,11 +248,9 @@ function startGraphSharing(sessionId, cookie, url, postId, accessToken, target, 
         } catch (e) {  
             session.error = `Graph: ${e.response?.status}`;  
         }
-
     }, interval * 1000);
 }
 
-// 📱 MOBILE SHARING (BACKUP - CONTINUED)
 function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
     if (!totalSessions.has(sessionId)) {
         totalSessions.set(sessionId, {
@@ -307,13 +292,10 @@ function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
         } catch (e) {  
             session.error = `Mobile: ${e.response?.status || 'failed'}`;  
         }
-
     }, interval * 1000);
 }
 
-// 🔍 POST ID EXTRACTOR (YOUR ORIGINAL + FALLBACK)
 async function getPostID(url) {
-    // TRY EXTERNAL SERVICE FIRST
     try {
         const response = await axios.post(
             'https://id.traodoisub.com/api.php',
@@ -325,14 +307,13 @@ async function getPostID(url) {
             return response.data.id;
         }
     } catch (e) {
-        console.log('External service failed → using regex');
+        console.log('External service failed -> using regex');
     }
 
-    // REGEX FALLBACKS
     const patterns = [
         /story_fbid=(\d+)/,
-        /posts?/(\d+)/,
-        /permalink/(\d+)/,
+        /posts?\/(\d+)/,
+        /permalink\/(\d+)/,
         /(\d+)$/
     ];
 
@@ -348,7 +329,6 @@ async function getPostID(url) {
     return null;
 }
 
-// 🔑 ACCESS TOKEN (YOUR WORKING VERSION)
 async function getAccessToken(cookie) {
     try {
         const response = await axios.get('https://business.facebook.com/content_management', {
@@ -366,19 +346,17 @@ async function getAccessToken(cookie) {
             console.log('✅ Access token found');  
             return match[1];  
         }
-
     } catch (e) {
-        console.log('❌ No access token → using mobile shares');
+        console.log('❌ No access token -> using mobile shares');
     }
     return null;
 }
 
-// 🔥 SERVER START
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`\n🚀 HYBRID FB BOT v2024 (REACT 90% + SHARES 100%)`);
     console.log(`📱 http://localhost:${PORT}`);
     console.log(`✅ Uses WORKING share logic + simple react`);
-    console.log(`✅ Mobile LIKE (85%) → Picker (10%) → Shares (100%)`);
+    console.log(`✅ Mobile LIKE (85%) -> Picker (10%) -> Shares (100%)`);
     console.log(`⭐ Fresh m.facebook.com cookie + public post = WIN!`);
 });
