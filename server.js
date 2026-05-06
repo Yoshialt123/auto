@@ -161,8 +161,8 @@ function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
   }, interval * 1000);
 }
 
-// ❤️ SMART REACT (1x max + share rest)
-function startSmartReact(sessionId, cookie, url, postId, target, interval, reactionType) {
+// ❤️ SMART REACT (1x max + share rest) - FIXED
+async function startSmartReact(sessionId, cookie, url, postId, target, interval, reactionType) {
   totalSessions.set(sessionId, {
     id: sessionId, url, postId, count: 0, target, type: 'react+share',
     reaction: reactionType, paused: false, error: null, reacted: false
@@ -171,95 +171,61 @@ function startSmartReact(sessionId, cookie, url, postId, target, interval, react
   const cUser = cookie.match(/c_user=(\d+)/)?.[1] || '';
   let hasReacted = false;
 
-  const timer = setInterval(async () => {
-    const session = totalSessions.get(sessionId);
-    if (!session || session.paused) return;
+  // 🔥 REACT PHASE (1x only) - Do it immediately
+  try {
+    const headers = {
+      'Cookie': cookie,
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) Chrome/120.0.0.0 Mobile Safari/537.36',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Referer': `https://m.facebook.com/${postId}`
+    };
 
-    // 🔥 REACT PHASE (1x only)
-    if (!hasReacted && session.count === 0) {
-      try {
-        const headers = {
-          'Cookie': cookie,
-          'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) Chrome/120.0.0.0 Mobile Safari/537.36',
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Referer': `https://m.facebook.com/${postId}`
-        };
-
-        const reactionIds = { like: 0, love: 1, haha: 4, wow: 2, sad: 7, angry: 13 };
-        const payload = new URLSearchParams({
-          '__user': cUser,
-          'story_id': postId,
-          'client_mutation_id': `react_${Date.now()}`,
-          'feedback_reaction': reactionIds[reactionType.toLowerCase()] || 0
-        });
-
-        const response = await axios.post(
-          `https://m.facebook.com/ajax/ufi/reaction.php`,
-          payload,
-          { headers, timeout: 15000 }
-        );
-
-        if (response.status === 200) {
-          session.count = 1;
-          hasReacted = true;
-          session.reacted = true;
-          console.log(`✅ ${reactionType.toUpperCase()} (1/1) + ${target-1} shares...`);
-        } else {
-          console.log('⚠️ React failed/skipped, doing shares only...');
-          hasReacted = true;
-        }
-      } catch (error) {
-        console.log('❌ React failed, doing shares...');
-        hasReacted = true;
-      }
-    }
-
-    // 🔥 SHARE PHASE (unlimited)
-    if (hasReacted && session.count < target) {
-      session.type = 'react+share';
-      session.error = `Reacted ✅ + Sharing ${session.count + 1}/${target}`;
-      
-      // Single share attempt
-      startSingleShare(sessionId, cookie, url, postId, target - session.count, interval);
-      clearInterval(timer);
-    }
-
-    // Complete when target reached
-    if (session.count >= target) {
-      clearInterval(timer);
-      totalSessions.delete(sessionId);
-      console.log('🎉 Session COMPLETE!');
-    }
-  }, interval * 1000);
-}
-
-// Single share helper
-function startSingleShare(sessionId, cookie, url, postId, remaining, interval) {
-  const session = totalSessions.get(sessionId);
-  if (!session) return;
-
-  const accessToken = session.accessToken || await getAccessToken(cookie);
-  if (accessToken) {
-    // Graph share
-    axios.post(
-      `https://graph.facebook.com/me/feed?link=https://m.facebook.com/${postId}&published=0&access_token=${accessToken}`,
-      {},
-      { 
-        headers: { 'Cookie': cookie, 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-        timeout: 10000 
-      }
-    ).then(() => {
-      session.count++;
-      console.log(`✅ SHARE ${session.count}/${session.target}`);
-    }).catch(() => {
-      // Mobile fallback
-      axios.get(`https://m.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, {
-        headers: { 'Cookie': cookie, 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)' }
-      }).then(() => {
-        session.count++;
-        console.log(`✅ MOBILE SHARE ${session.count}/${session.target}`);
-      });
+    const reactionIds = { like: 0, love: 1, haha: 4, wow: 2, sad: 7, angry: 13 };
+    const payload = new URLSearchParams({
+      '__user': cUser,
+      'story_id': postId,
+      'client_mutation_id': `react_${Date.now()}`,
+      'feedback_reaction': reactionIds[reactionType.toLowerCase()] || 0
     });
+
+    const response = await axios.post(
+      `https://m.facebook.com/ajax/ufi/reaction.php`,
+      payload,
+      { headers, timeout: 15000 }
+    );
+
+    if (response.status === 200) {
+      const session = totalSessions.get(sessionId);
+      if (session) {
+        session.count = 1;
+        session.reacted = true;
+      }
+      hasReacted = true;
+      console.log(`✅ ${reactionType.toUpperCase()} (1/1) + ${target-1} shares...`);
+    } else {
+      console.log('⚠️ React failed/skipped, doing shares only...');
+      hasReacted = true;
+    }
+  } catch (error) {
+    console.log('❌ React failed, doing shares...');
+    hasReacted = true;
+  }
+
+  // 🔥 SHARE PHASE (unlimited) - Start sharing immediately after react
+  if (hasReacted && target > 1) {
+    const session = totalSessions.get(sessionId);
+    if (session) {
+      session.type = 'react+share';
+      session.error = `Reacted ✅ + Sharing 1/${target}`;
+    }
+    
+    // Use Graph API sharing if possible
+    const accessToken = await getAccessToken(cookie);
+    if (accessToken) {
+      startGraphSharing(sessionId, cookie, url, postId, accessToken, target, interval);
+    } else {
+      startMobileSharing(sessionId, cookie, url, postId, target, interval);
+    }
   }
 }
 
