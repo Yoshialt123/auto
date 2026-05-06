@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Facebook Auto Bot</title>
+    <style>
+        body{font-family:Arial;padding:20px;background:#f0f2f5;}
+        .form-group{margin:10px 0;}
+        input,select,button{padding:10px;font-size:16px;}
+        button{background:#1877f2;color:white;border:none;cursor:pointer;}
+        .session{ border:1px solid #ddd;margin:10px;padding:15px;border-radius:8px;background:white;}
+        .share{background:#e7f3ff;} .react{background:#fff3cd;}
+        .error{color:red;}
+    </style>
+</head>
+<body>
+    <h1>🎯 Facebook Auto Bot (Share + React)</h1>
+    
+    <div style="background:white;padding:20px;border-radius:8px;">
+        <form id="botForm">
+            <div class="form-group">
+                <input type="text" id="cookie" placeholder="📋 Facebook Cookie" style="width:100%;max-width:400px;">
+            </div>
+            <div class="form-group">
+                <input type="url" id="url" placeholder="🔗 Facebook Post URL" style="width:100%;max-width:400px;">
+            </div>
+            <div style="display:flex;gap:10px;">
+                <input type="number" id="amount" placeholder="🎯 Amount" min="1" style="width:120px;">
+                <input type="number" id="interval" placeholder="⏱️ Interval (seconds)" min="1" style="width:120px;">
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;">
+                <select id="type" style="padding:10px;">
+                    <option value="share">📤 Auto Share</option>
+                    <option value="react">❤️ Auto React</option>
+                </select>
+                <select id="reaction" style="padding:10px;display:none;">
+                    <option value="like">👍 Like</option>
+                    <option value="love">❤️ Love</option>
+                    <option value="haha">😂 Haha</option>
+                    <option value="wow">😮 Wow</option>
+                    <option value="sad">😢 Sad</option>
+                    <option value="angry">😠 Angry</option>
+                </select>
+                <button type="submit">🚀 Start Bot</button>
+            </div>
+        </form>
+    </div>
+
+    <h2>📊 Active Sessions</h2>
+    <div id="sessions"></div>
+
+    <script>
+        const typeSelect = document.getElementById('type');
+        const reactionSelect = document.getElementById('reaction');
+        
+        typeSelect.onchange = () => {
+            reactionSelect.style.display = typeSelect.value === 'react' ? 'block' : 'none';
+        };
+
+        document.getElementById('botForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = {
+                cookie: document.getElementById('cookie').value,
+                url: document.getElementById('url').value,
+                amount: document.getElementById('amount').value,
+                interval: document.getElementById('interval').value,
+                type: document.getElementById('type').value,
+                reaction: document.getElementById('reaction').value
+            };
+            
+            const res = await fetch('/api/submit', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(formData)
+            });
+            
+            if (res.ok) {
+                document.getElementById('botForm').reset();
+                loadSessions();
+            }
+        };
+
+        setInterval(loadSessions, 3000);
+        loadSessions();
+
+        async function loadSessions() {
+            const res = await fetch('/total');
+            const sessions = await res.json();
+            document.getElementById('sessions').innerHTML = 
+                sessions.map(s => `
+                    <div class="session ${s.type}">
+                        <strong>${s.type === 'share' ? '📤 Share' : '❤️ React'} - ${s.url}</strong><br>
+                        <span style="font-size:18px;">${s.count}/${s.target}</span>
+                        ${s.type === 'react' ? ` (${s.reaction})` : ''}
+                        ${s.paused ? '<span style="color:orange;">⏸️ PAUSED</span>' : ''}
+                        ${s.error ? `<span class="error">❌ ${s.error}</span>` : ''}
+                        <br><small>${s.sessionId}</small>
+                    </div>
+                `).join('') || '<p>No active sessions</p>';
+        }
+    </script>
+</body>
+</html>
