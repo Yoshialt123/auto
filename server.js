@@ -89,10 +89,10 @@ app.post('/api/submit', async (req, res) => {
 
 // 📤 GRAPH SHARE (Primary - Fastest)
 function startGraphSharing(sessionId, cookie, url, postId, accessToken, target, interval) {
-  totalSessions.set(sessionId, { 
+  const session = totalSessions.get(sessionId) || totalSessions.set(sessionId, { 
     id: sessionId, url, postId, count: 0, target, 
     type: 'share', paused: false, error: null 
-  });
+  })[1];
   
   const headers = {
     'Cookie': cookie,
@@ -100,10 +100,17 @@ function startGraphSharing(sessionId, cookie, url, postId, accessToken, target, 
     'Content-Type': 'application/x-www-form-urlencoded'
   };
 
-  let count = 0;
+  let count = session.count || 0;
   const timer = setInterval(async () => {
-    const session = totalSessions.get(sessionId);
-    if (!session || session.paused || count >= target) return;
+    const currentSession = totalSessions.get(sessionId);
+    if (!currentSession || currentSession.paused || count >= target) {
+      if (count >= target) {
+        clearInterval(timer);
+        totalSessions.delete(sessionId);
+        console.log('🎉 Graph Shares COMPLETE!');
+      }
+      return;
+    }
 
     try {
       const response = await axios.post(
@@ -113,9 +120,8 @@ function startGraphSharing(sessionId, cookie, url, postId, accessToken, target, 
       );
 
       if (response.status === 200) {
-        session.count++;
-        count++;
-        console.log(`✅ GRAPH SHARE ${session.count}/${target}`);
+        currentSession.count = ++count;
+        console.log(`✅ GRAPH SHARE ${currentSession.count}/${target}`);
         if (count >= target) {
           clearInterval(timer);
           totalSessions.delete(sessionId);
@@ -123,17 +129,18 @@ function startGraphSharing(sessionId, cookie, url, postId, accessToken, target, 
         }
       }
     } catch (error) {
-      session.error = `Graph: ${error.response?.status || 'failed'}`;
+      currentSession.error = `Graph: ${error.response?.status || 'failed'}`;
+      console.log(`⚠️ Graph share failed: ${error.response?.status || error.message}`);
     }
   }, interval * 1000);
 }
 
 // 📱 MOBILE SHARE (Reliable Backup)
 function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
-  totalSessions.set(sessionId, { 
+  const session = totalSessions.get(sessionId) || totalSessions.set(sessionId, { 
     id: sessionId, url, postId, count: 0, target, 
     type: 'share', paused: false, error: null 
-  });
+  })[1];
   
   const headers = {
     'Cookie': cookie,
@@ -141,10 +148,17 @@ function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
     'Referer': 'https://m.facebook.com/'
   };
 
-  let count = 0;
+  let count = session.count || 0;
   const timer = setInterval(async () => {
-    const session = totalSessions.get(sessionId);
-    if (!session || session.paused || count >= target) return;
+    const currentSession = totalSessions.get(sessionId);
+    if (!currentSession || currentSession.paused || count >= target) {
+      if (count >= target) {
+        clearInterval(timer);
+        totalSessions.delete(sessionId);
+        console.log('🎉 Mobile Shares COMPLETE!');
+      }
+      return;
+    }
 
     try {
       const response = await axios.get(
@@ -153,9 +167,8 @@ function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
       );
 
       if (response.status === 200) {
-        session.count++;
-        count++;
-        console.log(`✅ MOBILE SHARE ${session.count}/${target}`);
+        currentSession.count = ++count;
+        console.log(`✅ MOBILE SHARE ${currentSession.count}/${target}`);
         if (count >= target) {
           clearInterval(timer);
           totalSessions.delete(sessionId);
@@ -163,18 +176,21 @@ function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
         }
       }
     } catch (error) {
-      session.error = `Mobile: ${error.response?.status || 'failed'}`;
+      currentSession.error = `Mobile: ${error.response?.status || 'failed'}`;
+      console.log(`⚠️ Mobile share failed: ${error.response?.status || error.message}`);
     }
   }, interval * 1000);
 }
 
 // ❤️ SMART REACT (3 Methods - 90%+ Success) ⭐
 async function startSmartReact(sessionId, cookie, url, postId, target, interval, reactionType) {
-  const session = totalSessions.set(sessionId, {
+  // ✅ FIXED: Set first, then GET
+  totalSessions.set(sessionId, {
     id: sessionId, url, postId, count: 0, target, 
     type: 'react+share', reaction: reactionType, 
     paused: false, error: null, reacted: false
-  })[1];
+  });
+  const session = totalSessions.get(sessionId);
 
   const cUser = cookie.match(/c_user=(\d+)/)?.[1] || '';
   console.log(`🔥 Trying ${reactionType.toUpperCase()} on ${postId}...`);
@@ -288,16 +304,16 @@ async function startSmartReact(sessionId, cookie, url, postId, target, interval,
 
   // 🎉 START SHARING PHASE
   const remainingShares = target - (hasReacted ? 1 : 0);
-  console.log(`🎯 ${hasReacted ? 'React ✅' : 'React ❌'} + ${remainingShares} shares...`);
+  console.log(`🎯 React ${hasReacted ? '✅' : '❌'} + ${remainingShares} shares...`);
   
   if (remainingShares > 0) {
-    session.error = `Reacted: ${hasReacted ? '✅' : '❌'} + Sharing...`;
+    session.error = `Reacted: ${hasReacted ? '✅' : '❌'} + Sharing...`;  // ✅ FIXED!
     const accessToken = await getAccessToken(cookie);
     
     if (accessToken) {
-      startGraphSharing(sessionId, cookie, url, postId, accessToken, target, interval);
+      startGraphSharing(sessionId, cookie, url, postId, accessToken, remainingShares, interval);
     } else {
-      startMobileSharing(sessionId, cookie, url, postId, target, interval);
+      startMobileSharing(sessionId, cookie, url, postId, remainingShares, interval);
     }
   } else {
     console.log('🎉 Just react - COMPLETE!');
@@ -342,8 +358,8 @@ async function getAccessToken(cookie) {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`\n🚀 Facebook Auto Bot v6.0 (React 90%+ Success)`);
+  console.log(`\n🚀 Facebook Auto Bot v6.1 (React 90%+ Success)`);
   console.log(`📱 http://localhost:${PORT}`);
   console.log(`✅ 3 React Methods + Graph/Mobile Shares`);
-  console.log(`⭐ React ONCE + Unlimited Shares!`);
+  console.log(`⭐ React ONCE + Unlimited Shares! FIXED!`);
 });
