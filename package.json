@@ -1,13 +1,14 @@
 {
   "name": "facebook-auto-bot",
-  "version": "1.0.0",
-  "description": "Facebook Auto Share & React Bot with Web Dashboard",
+  "version": "3.5.0",
+  "description": "Facebook Auto Share & React Bot with Web Dashboard (Graph API + Mobile)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
     "install-deps": "npm install",
-    "build": "echo 'Ready to run!'"
+    "build": "echo '🚀 Ready to run! Visit http://localhost:3000'",
+    "clean": "rm -rf node_modules package-lock.json && npm install"
   },
   "keywords": [
     "facebook",
@@ -15,14 +16,16 @@
     "bot",
     "share",
     "react",
+    "graph-api",
     "express",
     "web-dashboard"
   ],
-  "author": "Your Name",
+  "author": "Facebook Auto Bot",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
-    "axios": "^1.6.0"
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
@@ -32,6 +35,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/facebook-auto-bot"
+    "url": "https://github.com/Yoshialt123/"
   }
-}
+}}
