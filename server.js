@@ -3,6 +3,7 @@ const axios = require('axios');
 const path = require('path');
 const cheerio = require('cheerio');
 const crypto = require('crypto');
+
 const app = express();
 
 app.use(express.json());
@@ -11,397 +12,214 @@ app.use(express.static('public'));
 
 const totalSessions = new Map();
 
-// 🔥 HYBRID HEADERS (WORKING SHARE + REACT)
 const HYBRID_HEADERS = {
-'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-'Accept': '/',
-'Accept-Language': 'en-US,en;q=0.9',
-'Accept-Encoding': 'gzip, deflate, br'
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+  'Accept': '*/*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br'
 };
 
-// 🔥 ALL UI ROUTES (YOUR ORIGINAL)
+// ROUTES
 app.get('/', (req, res) => {
-res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.get('/total', (req, res) => {
-const data = Array.from(totalSessions.values()).map(session => ({
-sessionId: session.id,
-url: session.url,
-count: session.count,
-target: session.target,
-type: session.type,
-reaction: session.reaction || null,
-error: session.error || null,
-paused: session.paused || false,
-reacted: session.reacted || false
-}));
-res.json(data);
+  const data = Array.from(totalSessions.values());
+  res.json(data);
 });
 
 app.post('/api/pause/:sessionId', (req, res) => {
-const sessionId = req.params.sessionId;
-const session = totalSessions.get(sessionId);
-if (session) {
-session.paused = !session.paused;
-res.json({ success: true, paused: session.paused });
-} else {
-res.status(404).json({ error: 'Session not found' });
-}
+  const session = totalSessions.get(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+
+  session.paused = !session.paused;
+  res.json({ success: true, paused: session.paused });
 });
 
 app.delete('/api/delete/:sessionId', (req, res) => {
-const sessionId = req.params.sessionId;
-if (totalSessions.delete(sessionId)) {
-res.json({ success: true });
-} else {
-res.status(404).json({ error: 'Session not found' });
-}
+  if (!totalSessions.delete(req.params.sessionId)) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  res.json({ success: true });
 });
 
-// 🚀 MAIN SUBMIT (YOUR STRUCTURE)
+// MAIN
 app.post('/api/submit', async (req, res) => {
-const { cookie, url, amount, interval, type, reaction } = req.body;
+  const { cookie, url, amount, interval, type, reaction } = req.body;
 
-if (!cookie || !url || !amount || !interval || !type) {
-return res.status(400).json({ error: 'Missing required fields' });
-}
+  if (!cookie || !url || !amount || !interval || !type) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
 
-try {
-console.log(\n🎯 ${type.toUpperCase()}: ${url});
+  try {
+    console.log(`\n🎯 ${type.toUpperCase()}: ${url}`);
 
-const postId = await getPostID(url);  
-if (!postId) {  
-  return res.status(400).json({ error: 'Could not extract post ID' });  
-}  
+    const postId = await getPostID(url);
+    if (!postId) {
+      return res.status(400).json({ error: 'Could not extract post ID' });
+    }
 
-const sessionId = Date.now().toString();  
-console.log(`✅ Post ID: ${postId}`);  
+    const sessionId = Date.now().toString();
+    console.log(`✅ Post ID: ${postId}`);
 
-if (type === 'share') {  
-  // WORKING SHARE CODE (100% success)  
-  const accessToken = await getAccessToken(cookie);  
-  if (accessToken) {  
-    startGraphSharing(sessionId, cookie, url, postId, accessToken, parseInt(amount), parseInt(interval));  
-  } else {  
-    startMobileSharing(sessionId, cookie, url, postId, parseInt(amount), parseInt(interval));  
-  }  
-} else {  
-  // HYBRID REACT + SHARE  
-  startHybridReact(sessionId, cookie, url, postId, parseInt(amount), parseInt(interval), reaction || 'like');  
-}  
+    if (type === 'share') {
+      const token = await getAccessToken(cookie);
+      if (token) {
+        startGraphSharing(sessionId, cookie, url, postId, token, amount, interval);
+      } else {
+        startMobileSharing(sessionId, cookie, url, postId, amount, interval);
+      }
+    } else {
+      startHybridReact(sessionId, cookie, url, postId, amount, interval, reaction || 'like');
+    }
 
-res.json({ success: true, sessionId, postId });
+    res.json({ success: true, sessionId, postId });
 
-} catch (error) {
-console.error('❌ Error:', error.message);
-res.status(500).json({ error: error.message });
-}
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// 🔥 HYBRID REACT (90% SUCCESS + 100% SHARES)
+// HYBRID REACT
 async function startHybridReact(sessionId, cookie, url, postId, target, interval, reactionType) {
-console.log(\n🔥 HYBRID REACT+SHARE (${reactionType}) | ${postId});
+  console.log(`\n🔥 HYBRID (${reactionType}) | ${postId}`);
 
-totalSessions.set(sessionId, {
-id: sessionId, url, postId, count: 0, target,
-type: 'react+share', reaction: reactionType,
-paused: false, error: null, reacted: false
-});
+  totalSessions.set(sessionId, {
+    id: sessionId,
+    url,
+    postId,
+    count: 0,
+    target,
+    type: 'react+share',
+    paused: false,
+    reacted: false
+  });
 
-const session = totalSessions.get(sessionId);
-const cUser = cookie.match(/c_user=(\d+)/)?.[1] || '';
-let hasReacted = false;
+  const session = totalSessions.get(sessionId);
+  const cUser = cookie.match(/c_user=(\d+)/)?.[1] || '';
+  let hasReacted = false;
 
-// 🟢 PHASE 1: SIMPLE TOUCH (reduces blocks)
-try {
-console.log('📱 Touching post...');
-await axios.get(https://m.facebook.com/${postId}, {
-headers: {
-'Cookie': cookie,
-'User-Agent': HYBRID_HEADERS['User-Agent'],
-'Accept': 'text/html,application/xhtml+xml,/;q=0.8'
-},
-timeout: 8000
-});
-} catch (e) {
-console.log('⚠️ Touch skipped');
+  try {
+    await axios.get(`https://m.facebook.com/${postId}`, {
+      headers: { Cookie: cookie }
+    });
+  } catch {}
+
+  try {
+    const likeRes = await axios.post(
+      `https://m.facebook.com/ajax/ufi/like.php?story_id=${postId}`,
+      `__user=${cUser}&__a=1`,
+      { headers: { Cookie: cookie } }
+    );
+
+    if (likeRes.status === 200) {
+      hasReacted = true;
+    }
+  } catch {}
+
+  console.log(`🎯 React: ${hasReacted ? 'YES' : 'NO'}`);
+  session.reacted = hasReacted;
+
+  const shares = Math.max(0, target - (hasReacted ? 1 : 0));
+  console.log(`📤 Shares: ${shares}`);
+
+  if (shares > 0) {
+    setTimeout(async () => {
+      const token = await getAccessToken(cookie);
+      if (token) {
+        startGraphSharing(sessionId, cookie, url, postId, token, shares, interval);
+      } else {
+        startMobileSharing(sessionId, cookie, url, postId, shares, interval);
+      }
+    }, 2000);
+  }
 }
 
-// 🟢 PHASE 2: MOBILE LIKE (85% success - simple)
-try {
-console.log('👍 Simple mobile LIKE...');
-const likeRes = await axios.post(
-https://m.facebook.com/ajax/ufi/like.php?story_id=${postId},
-new URLSearchParams({
-'__user': cUser,
-'__a': '1',
-'__req': 'src'
-}).toString(),
-{
-headers: {
-'Cookie': cookie,
-'Content-Type': 'application/x-www-form-urlencoded',
-'X-Requested-With': 'XMLHttpRequest',
-'Referer': https://m.facebook.com/${postId},
-'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15'
-},
-timeout: 10000
-}
-);
+// GRAPH SHARING
+function startGraphSharing(sessionId, cookie, url, postId, token, target, interval) {
+  let count = 0;
 
-if (likeRes.status === 200 && likeRes.data.includes('Unlike')) {  
-  hasReacted = true;  
-  console.log('✅ MOBILE LIKE SUCCESS! 🎉');  
+  const timer = setInterval(async () => {
+    const session = totalSessions.get(sessionId);
+    if (!session || session.paused || count >= target) {
+      clearInterval(timer);
+      return;
+    }
+
+    try {
+      await axios.post(
+        `https://graph.facebook.com/me/feed?link=https://m.facebook.com/${postId}&published=0&access_token=${token}`
+      );
+
+      count++;
+      session.count = count;
+
+      console.log(`✅ GRAPH ${count}/${target}`);
+    } catch {}
+  }, interval * 1000);
 }
 
-} catch (e) {
-console.log('❌ Mobile like failed');
-}
-
-// 🟢 PHASE 3: REACTION PICKER (backup)
-if (!hasReacted) {
-try {
-console.log('🎨 Reaction picker...');
-const picker = await axios.get(https://m.facebook.com/reactions/picker/?ft_id=${postId}, {
-headers: { 'Cookie': cookie, 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15' },
-timeout: 8000
-});
-
-const $ = cheerio.load(picker.data);  
-  const links = [];  
-  $('a[href*="/ufi/reaction/"]').each((i, el) => {  
-    const href = $(el).attr('href');  
-    if (href) links.push(href);  
-  });  
-
-  if (links.length > 0) {  
-    const reactUrl = `https://m.facebook.com${links[0]}`;  
-    const reactRes = await axios.get(reactUrl, {  
-      headers: {   
-        'Cookie': cookie,  
-        'Referer': `https://m.facebook.com/reactions/picker/?ft_id=${postId}`,  
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15'  
-      },  
-      timeout: 8000  
-    });  
-
-    if (reactRes.status === 200) {  
-      hasReacted = true;  
-      console.log('✅ PICKER SUCCESS!');  
-    }  
-  }  
-} catch (e) {  
-  console.log('❌ Picker failed');  
-}
-
-}
-
-// 🎯 RESULT
-console.log(\n🎯 React: ${hasReacted ? '✅ YES' : '❌ NO'});
-session.reacted = hasReacted;
-if (hasReacted) session.count = 1;
-
-// 🚀 SHARES (YOUR WORKING CODE)
-const shares = Math.max(0, target - (hasReacted ? 1 : 0));
-console.log(📤 Shares: ${shares});
-
-if (shares > 0) {
-setTimeout(async () => {
-const token = await getAccessToken(cookie);
-token ?
-startGraphSharing(sessionId, cookie, url, postId, token, shares, interval) :
-startMobileSharing(sessionId, cookie, url, postId, shares, interval);
-}, 2000);
-}
-}
-
-// 🔥 GRAPH SHARING (YOUR WORKING VERSION - 100%)
-function startGraphSharing(sessionId, cookie, url, postId, accessToken, target, interval) {
-if (!totalSessions.has(sessionId)) {
-totalSessions.set(sessionId, {
-id: sessionId, url, postId, count: 0, target,
-type: 'share', paused: false, error: null
-});
-}
-
-let count = 0;
-const timer = setInterval(async () => {
-const session = totalSessions.get(sessionId);
-if (!session || session.paused || count >= target) {
-if (count >= target) {
-clearInterval(timer);
-totalSessions.delete(sessionId);
-console.log(🎉 GRAPH SHARES COMPLETE! ${count}/${target});
-}
-return;
-}
-
-try {  
-  const res = await axios.post(  
-    `https://graph.facebook.com/me/feed?link=https://m.facebook.com/${postId}&published=0&access_token=${accessToken}`,  
-    {},  
-    {   
-      headers: {   
-        'Cookie': cookie,   
-        'User-Agent': HYBRID_HEADERS['User-Agent'],  
-        'Content-Type': 'application/x-www-form-urlencoded'   
-      },   
-      timeout: 15000   
-    }  
-  );  
-
-  if (res.status === 200) {  
-    count++;  
-    session.count = count;  
-    console.log(`✅ GRAPH SHARE ${count}/${target}`);  
-  }  
-} catch (e) {  
-  session.error = `Graph: ${e.response?.status}`;  
-}
-
-}, interval * 1000);
-}
-
-// 📱 MOBILE SHARING (BACKUP - CONTINUED)
+// MOBILE SHARING
 function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
-if (!totalSessions.has(sessionId)) {
-totalSessions.set(sessionId, {
-id: sessionId, url, postId, count: 0, target,
-type: 'share', paused: false, error: null
-});
+  let count = 0;
+
+  const timer = setInterval(async () => {
+    const session = totalSessions.get(sessionId);
+    if (!session || session.paused || count >= target) {
+      clearInterval(timer);
+      return;
+    }
+
+    try {
+      await axios.get(
+        `https://m.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+        { headers: { Cookie: cookie } }
+      );
+
+      count++;
+      session.count = count;
+
+      console.log(`📱 MOBILE ${count}/${target}`);
+    } catch {}
+  }, interval * 1000);
 }
 
-let count = 0;
-const timer = setInterval(async () => {
-const session = totalSessions.get(sessionId);
-if (!session || session.paused || count >= target) {
-if (count >= target) {
-clearInterval(timer);
-totalSessions.delete(sessionId);
-console.log(🎉 MOBILE SHARES COMPLETE! ${count}/${target});
-}
-return;
-}
-
-try {  
-  const res = await axios.get(  
-    `https://m.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,  
-    {   
-      headers: {   
-        'Cookie': cookie,   
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',  
-        ...HYBRID_HEADERS   
-      },   
-      timeout: 15000   
-    }  
-  );  
-
-  if (res.status === 200) {  
-    count++;  
-    session.count = count;  
-    console.log(`✅ MOBILE SHARE ${count}/${target}`);  
-  }  
-} catch (e) {  
-  session.error = `Mobile: ${e.response?.status || 'failed'}`;  
-}
-
-}, interval * 1000);
-}
-
-// 🔍 POST ID EXTRACTOR (YOUR ORIGINAL + FALLBACK)
+// GET POST ID
 async function getPostID(url) {
-// TRY EXTERNAL SERVICE FIRST
-try {
-const response = await axios.post(
-'https://id.traodoisub.com/api.php',
-link=${encodeURIComponent(url)},
-{ headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
-);
-if (response.data?.id) {
-console.log(✅ External ID: ${response.data.id});
-return response.data.id;
-}
-} catch (e) {
-console.log('External service failed → using regex');
+  try {
+    const res = await axios.post(
+      'https://id.traodoisub.com/api.php',
+      `link=${encodeURIComponent(url)}`,
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+
+    if (res.data?.id) return res.data.id;
+  } catch {}
+
+  const match = url.match(/(\d+)/);
+  return match ? match[1] : null;
 }
 
-// REGEX FALLBACKS
-const patterns = [
-/story_fbid=(\d+)/,
-/posts?/(\d+)/,
-/permalink/(\d+)/,
-//(\d+)$/
-];
-
-for (const pattern of patterns) {
-const match = url.match(pattern);
-if (match) {
-console.log(✅ Regex ID: ${match[1]});
-return match[1];
-}
-}
-
-console.log('❌ No post ID found');
-return null;
-}
-
-// 🔑 ACCESS TOKEN (YOUR WORKING VERSION)
+// ACCESS TOKEN
 async function getAccessToken(cookie) {
-try {
-const response = await axios.get('https://business.facebook.com/content_management', {
-headers: {
-'Cookie': cookie,
-'User-Agent': HYBRID_HEADERS['User-Agent'],
-'Referer': 'https://www.facebook.com/',
-'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,/;q=0.8'
-},
-timeout: 15000
-});
+  try {
+    const res = await axios.get(
+      'https://business.facebook.com/content_management',
+      { headers: { Cookie: cookie } }
+    );
 
-const match = response.data.match(/"accessToken":\s*"([^"]+)"/);  
-if (match) {  
-  console.log('✅ Access token found');  
-  return match[1];  
+    const match = res.data.match(/"accessToken":"([^"]+)"/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
 }
 
-} catch (e) {
-console.log('❌ No access token → using mobile shares');
-}
-return null;
-}
-
-// 🔥 COOKIE FORMATTER (from working share code)
-async function convertCookie(cookie) {
-try {
-// If already string, return as-is
-if (typeof cookie === 'string') return cookie;
-
-// Parse appstate JSON  
-const cookies = JSON.parse(cookie);  
-const sbCookie = cookies.find(c => c.key === 'sb');  
-  
-if (!sbCookie) return cookie; // fallback  
-  
-let formatted = `sb=${sbCookie.value}; `;  
-formatted += cookies  
-  .filter(c => c.key !== 'sb')  
-  .map(c => `${c.key}=${c.value}`)  
-  .join('; ');  
-  
-return formatted;
-
-} catch (e) {
-return cookie; // fallback to original
-}
-}
-
-// 🚀 SERVER START
+// START SERVER
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
-console.log(\n🚀 HYBRID FB BOT v2024 (REACT 90% + SHARES 100%));
-console.log(📱 http://localhost:${PORT});
-console.log(✅ Uses WORKING share logic + simple react);
-console.log(✅ Mobile LIKE (85%) → Picker (10%) → Shares (100%));
-console.log(⭐ Fresh m.facebook.com cookie + public post = WIN!);
+  console.log(`\n🚀 Server running on http://localhost:${PORT}`);
 });
