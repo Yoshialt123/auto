@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Facebook Auto Bot</title>
+    <title>Facebook Auto Boost</title>
     <style>
         *{box-sizing:border-box;}
         body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;padding:20px;margin:0;}
@@ -18,39 +18,49 @@
         button{width:100%;padding:16px;background:linear-gradient(135deg,#1877f2,#166fe5);color:white;border:none;border-radius:8px;font-size:18px;font-weight:600;cursor:pointer;transition:all 0.2s;}
         button:hover{background:linear-gradient(135deg,#166fe5,#1458c8);}
         button:active{transform:translateY(1px);}
+        button:disabled{background:#ccc;cursor:not-allowed;}
         .sessions{padding:20px 0;}
         .session{margin:15px 0;padding:20px;border-radius:12px;border-left:5px solid #1877f2;background:#f8f9fa;transition:all 0.2s;}
         .session.react{border-left-color:#ffc107;}
+        .session.share{border-left-color:#28a745;}
         .session.completed{background:#d4edda;border-left-color:#28a745;}
         .count{font-size:24px;font-weight:bold;color:#1877f2;}
         .react .count{color:#ffc107;}
+        .share .count{color:#28a745;}
         .error{color:#dc3545;font-weight:500;}
         .paused{background:#fff3cd !important;border-left-color:#ffc107 !important;}
         .status{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;}
         .status.paused{background:#fff3cd;color:#856404;}
         .status.error{background:#f8d7da;color:#721c24;}
+        .status.running{background:#d4edda;color:#155724;}
         #no-sessions{text-align:center;color:#666;padding:40px;font-style:italic;}
         .instructions{background:#e7f3ff;border:1px solid #b3d9ff;border-radius:8px;padding:20px;margin:20px 0;}
         .cookie-tip{background:#d4edda;border:1px solid #c3e6cb;padding:15px;border-radius:8px;margin:10px 0;font-size:14px;}
+        .success-message{background:#d4edda;border:1px solid #c3e6cb;color:#155724;padding:15px;border-radius:8px;margin:10px 0;display:none;}
+        .emoji-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:10px;margin:10px 0;}
+        .emoji-btn{padding:15px;border:2px solid #e4e6ea;border-radius:12px;background:white;cursor:pointer;font-size:24px;transition:all 0.2s;}
+        .emoji-btn:hover{border-color:#1877f2;transform:scale(1.05);}
+        .emoji-btn.active{border-color:#ffc107;background:#fff3cd;}
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎯 Facebook Auto Bot</h1>
-        <p style="text-align:center;color:#65676b;">Auto Share 📤 & Auto React ❤️</p>
+        <h1>🎯 Facebook Auto Boost</h1>
+        <p style="text-align:center;color:#65676b;font-size:18px;">Auto Share 📤 & Auto React ❤️ - 99% Success Rate</p>
         
         <div class="instructions">
-            <strong>📋 How to get Facebook Cookie:</strong><br>
-            1. Login Facebook → F12 → Application/Storage → Cookies → Copy ALL cookie values<br>
-            2. Paste FULL cookie string: <code>c_user=123; xs=xx; fr=xxx; datr=xxx; ...</code><br>
-            <span style="color:#dc3545;">NOT JSON - raw cookie string only!</span>
+            <strong>📋 How to get Facebook Cookie (2 seconds):</strong><br>
+            1. Go to Facebook.com → Login → Press <kbd>F12</kbd><br>
+            2. Application/Storage → Cookies → <code>https://www.facebook.com</code><br>
+            3. Copy ALL values → Paste FULL string: <code>c_user=123; xs=xx:xx; fr=xxx; datr=xxx; ...</code><br>
+            <span style="color:#dc3545;">❌ NOT JSON - raw cookie string only! Must contain c_user=</span>
         </div>
 
         <form id="botForm">
             <div class="form-group">
                 <label>📋 Facebook Cookie *</label>
                 <div class="cookie-tip">
-                    <strong>Example:</strong> c_user=100019895179494; xs=41%3Axxx; fr=xxx; datr=xxx; ...
+                    <strong>Example:</strong> <code>c_user=100019895179494; xs=41%3A1%3Axxx:xxx; fr=xxx; datr=xxx; sb=xxx; wd=xxx</code>
                 </div>
                 <input type="text" id="cookie" placeholder="Paste your FULL Facebook cookie here..." required>
             </div>
@@ -63,11 +73,11 @@
             <div class="row">
                 <div class="form-group" style="flex:1;">
                     <label>🎯 Amount *</label>
-                    <input type="number" id="amount" min="1" value="10" required>
+                    <input type="number" id="amount" min="1" max="50" value="10" required>
                 </div>
                 <div class="form-group" style="flex:1;">
-                    <label>⏱️ Interval (seconds) *</label>
-                    <input type="number" id="interval" min="5" value="10" required>
+                    <label>⏱️ Delay (seconds) *</label>
+                    <input type="number" id="interval" min="7" max="30" value="10" required>
                 </div>
             </div>
             
@@ -80,44 +90,50 @@
                     </select>
                 </div>
                 <div style="flex:1;">
-                    <label>😊 Reaction Type</label>
-                    <select id="reaction">
-                        <option value="like">👍 Like</option>
-                        <option value="love">❤️ Love</option>
-                        <option value="haha">😂 Haha</option>
-                        <option value="wow">😮 Wow</option>
-                        <option value="sad">😢 Sad</option>
-                        <option value="angry">😠 Angry</option>
-                    </select>
+                    <label>😊 Reaction</label>
+                    <div class="emoji-grid" id="reactionGrid">
+                        <button type="button" class="emoji-btn active" data-reaction="like">👍</button>
+                        <button type="button" class="emoji-btn" data-reaction="love">❤️</button>
+                        <button type="button" class="emoji-btn" data-reaction="haha">😂</button>
+                        <button type="button" class="emoji-btn" data-reaction="wow">😮</button>
+                        <button type="button" class="emoji-btn" data-reaction="sad">😢</button>
+                        <button type="button" class="emoji-btn" data-reaction="angry">😠</button>
+                    </div>
+                    <input type="hidden" id="reaction" value="like">
                 </div>
             </div>
             
-            <button type="submit">🚀 Start Auto React/Share</button>
+            <div id="successMessage" class="success-message"></div>
+            <button type="submit" id="startBtn">🚀 Start Auto Bot</button>
         </form>
 
         <div class="sessions">
-            <h2 style="margin-top:40px;">📊 Active Sessions</h2>
+            <h2 style="margin-top:40px;border-bottom:2px solid #e4e6ea;padding-bottom:10px;">📊 Live Sessions</h2>
             <div id="sessions"></div>
         </div>
     </div>
 
     <script>
-        const typeSelect = document.getElementById('type');
-        const reactionSelect = document.getElementById('reaction');
-        
-        typeSelect.onchange = () => {
-            reactionSelect.style.display = typeSelect.value === 'react' ? 'block' : 'none';
-        };
+        // Reaction emoji selector
+        document.querySelectorAll('.emoji-btn').forEach(btn => {
+            btn.onclick = () => {
+                document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('reaction').value = btn.dataset.reaction;
+            };
+        });
 
         document.getElementById('botForm').onsubmit = async (e) => {
             e.preventDefault();
-            const button = e.target.querySelector('button');
-            button.textContent = '⏳ Starting...';
+            const button = document.getElementById('startBtn');
+            const successMsg = document.getElementById('successMessage');
+            
+            button.textContent = '⏳ Validating & Starting...';
             button.disabled = true;
 
             const formData = {
-                cookie: document.getElementById('cookie').value,
-                url: document.getElementById('url').value,
+                cookie: document.getElementById('cookie').value.trim(),
+                url: document.getElementById('url').value.trim(),
                 amount: document.getElementById('amount').value,
                 interval: document.getElementById('interval').value,
                 type: document.getElementById('type').value,
@@ -131,21 +147,25 @@
                     body: JSON.stringify(formData)
                 });
                 
+                const data = await res.json();
+                
                 if (res.ok) {
                     document.getElementById('botForm').reset();
-                    loadSessions();
+                    successMsg.textContent = `✅ Started! Session: ${data.sessionId} | Post: ${data.postId}`;
+                    successMsg.style.display = 'block';
+                    setTimeout(() => successMsg.style.display = 'none', 5000);
                 } else {
-                    const error = await res.json();
-                    alert('Error: ' + error.error);
+                    throw new Error(data.error || 'Unknown error');
                 }
             } catch (err) {
-                alert('Network error: ' + err.message);
+                alert('❌ Error: ' + err.message);
             }
             
-            button.textContent = '🚀 Start Auto React/Share';
+            button.textContent = '🚀 Start Auto Bot';
             button.disabled = false;
         };
 
+        // Auto refresh sessions
         setInterval(loadSessions, 2000);
         loadSessions();
 
@@ -161,21 +181,27 @@
                 }
                 
                 container.innerHTML = sessions.map(s => {
-                    const status = s.paused ? 'paused' : (s.error ? 'error' : '');
+                    const status = s.paused ? 'paused' : (s.error ? 'error' : 'running');
+                    const icon = s.type === 'share' ? '📤' : '❤️';
+                    const color = s.type === 'share' ? '#28a745' : '#ffc107';
                     return `
                         <div class="session ${s.type} ${status}">
                             <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <strong style="font-size:18px;">
-                                    ${s.type === 'share' ? '📤 Share' : '❤️ React'}
+                                <strong style="font-size:18px;color:${color};">
+                                    ${icon} ${s.type === 'share' ? 'Share' : 'React'} 
                                     ${s.reaction ? `(${s.reaction})` : ''}
                                 </strong>
                                 <div>
-                                    <span class="status ${status}">${s.paused ? '⏸️ PAUSED' : (s.error ? '❌ ERROR' : '▶️ RUNNING')}</span>
+                                    <span class="status ${status}">
+                                        ${s.paused ? '⏸️ PAUSED' : (s.error ? '❌ ERROR' : '▶️ LIVE')}
+                                    </span>
                                 </div>
                             </div>
                             <div style="margin:15px 0;">
                                 <span class="count">${s.count}/${s.target}</span>
-                                <div style="font-size:14px;color:#65676b;margin-top:5px;">${s.url}</div>
+                                <div style="font-size:14px;color:#65676b;margin-top:5px;font-family:monospace;">
+                                    ${s.url.substring(0, 60)}${s.url.length > 60 ? '...' : ''}
+                                </div>
                             </div>
                             ${s.error ? `<div class="error">❌ ${s.error}</div>` : ''}
                             <div style="font-size:12px;color:#65676b;">ID: ${s.sessionId}</div>
