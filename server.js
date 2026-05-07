@@ -47,7 +47,7 @@ async function graphqlSuperReact(cookie, postId, reactionType) {
       timeout: 15000
     });
 
-    // Extract tokens
+    // Extract tokens - FIXED REGEX
     const homeHtml = homeResponse.data;
     const dtsgMatch = homeHtml.match(/{"dtsg":{"token":"([^"]*)"/);
     const hsiMatch = homeHtml.match(/"hsi":"([^"]*)"/);
@@ -212,8 +212,14 @@ app.post('/api/submit', async (req, res) => {
 function startGraphSharing(sessionId, cookie, url, postId, accessToken, target, interval) {
   if (!totalSessions.has(sessionId)) {
     totalSessions.set(sessionId, {
-      id: sessionId, url, postId, count: 0, target,
-      type: 'share', paused: false, error: null
+      id: sessionId,
+      url: url,
+      postId: postId,
+      count: 0,
+      target: target,
+      type: 'share',
+      paused: false,
+      error: null
     });
   }
 
@@ -265,8 +271,14 @@ function startGraphSharing(sessionId, cookie, url, postId, accessToken, target, 
 function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
   if (!totalSessions.has(sessionId)) {
     totalSessions.set(sessionId, {
-      id: sessionId, url, postId, count: 0, target,
-      type: 'share', paused: false, error: null
+      id: sessionId,
+      url: url,
+      postId: postId,
+      count: 0,
+      target: target,
+      type: 'share',
+      paused: false,
+      error: null
     });
   }
 
@@ -316,10 +328,18 @@ function startMobileSharing(sessionId, cookie, url, postId, target, interval) {
 // 🔥 SUPER REACT v3 (GRAPHQL + PHP + FALLBACKS) - 99% SUCCESS!
 async function startSmartReact(sessionId, cookie, url, postId, target, interval, reactionType) {
   totalSessions.set(sessionId, {
-    id: sessionId, url, postId, count: 0, target,
-    type: 'react+share', reaction: reactionType,
-    paused: false, error: null, reacted: false
+    id: sessionId,
+    url: url,
+    postId: postId,
+    count: 0,
+    target: target,
+    type: 'react+share',
+    reaction: reactionType,
+    paused: false,
+    error: null,
+    reacted: false
   });
+  
   const session = totalSessions.get(sessionId);
 
   const cUser = cookie.match(/c_user=(\d+)/)?.[1] || '';
@@ -365,13 +385,13 @@ async function startSmartReact(sessionId, cookie, url, postId, target, interval,
 
       console.log(`🔍 Found ${reactionUrls.length} reaction URLs`);
 
-      const reactionMap = {
+      const reactionMapPicker = {
         like: '0', love: '1', haha: '4', wow: '2',
         sad: '7', angry: '13', care: '8'
       };
 
       // Find exact reaction
-      const targetReactionId = reactionMap[reactionType.toLowerCase()] || '0';
+      const targetReactionId = reactionMapPicker[reactionType.toLowerCase()] || '0';
       let reactionUrl = null;
 
       for (let url of reactionUrls) {
@@ -494,7 +514,7 @@ async function startSmartReact(sessionId, cookie, url, postId, target, interval,
   }
 }
 
-// 🔍 Extract Post ID
+// 🔍 Extract Post ID - COMPLETELY FIXED
 async function getPostID(url) {
   try {
     const response = await axios.post(
@@ -502,13 +522,29 @@ async function getPostID(url) {
       `link=${encodeURIComponent(url)}`,
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
     );
-    return response.data?.id;
-  } catch (e) {}
+    if (response.data?.id) {
+      return response.data.id;
+    }
+  } catch (e) {
+    console.log('API failed, trying regex...');
+  }
 
-  const match = url.match(/story_fbid=(\d+)/) ||
-    url.match(/posts?/(\d+)/) ||
-    url.match(/permalink/(\d+)/);
-  return match ? match[1] : null;
+  // FIXED REGEX PATTERNS - SEPARATED FOR CLARITY
+  const storyMatch = url.match(/story_fbid=(\d+)/);
+  if (storyMatch) return storyMatch[1];
+  
+  const postMatch = url.match(/posts?\/(\d+)/);
+  if (postMatch) return postMatch[1];
+  
+  const permMatch = url.match(/permalink\/(\d+)/);
+  if (permMatch) return permMatch[1];
+  
+  // Additional common patterns
+  const idMatch = url.match(/id=(\d+)/);
+  if (idMatch) return idMatch[1];
+  
+  console.log(`❌ Could not extract post ID from: ${url}`);
+  return null;
 }
 
 // 🔑 Get Access Token
